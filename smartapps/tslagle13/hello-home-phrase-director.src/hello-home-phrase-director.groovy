@@ -1,4 +1,4 @@
-    /**
+/**
      *  Magic Home
      *
      *  Copyright 2014 Tim Slagle
@@ -14,10 +14,10 @@
      *
      */
     definition(
-        name: "Magic Home",
+        name: "Hello, Home Phrase Director",
         namespace: "tslagle13",
         author: "Tim Slagle",
-        description: "Monitor a set of presence sensors and change mode based on when your home is empty or occupied.  Included Night and Day modes for both an occupied and unoccupied house.",
+        description: "Monitor a set of presence sensors and activate Hello, Home phrases based on whether your home is empty or occupied.  Each presence status change will check against the current 'sun state' to run phrases based on occupancy and whether the sun is up or down.",
         category: "Convenience",
         iconUrl: "http://icons.iconarchive.com/icons/icons8/ios7/512/Very-Basic-Home-Filled-icon.png",
         iconX2Url: "http://icons.iconarchive.com/icons/icons8/ios7/512/Very-Basic-Home-Filled-icon.png"
@@ -53,7 +53,7 @@
     	def configured = (settings.awayDay && settings.awayNight && settings.homeDay && settings.homeNight)
         dynamicPage(name: "selectPhrases", title: "Configure", nextPage:"Settings", uninstall: true) {		
     		section("Who?") {
-    			input "people", "capability.presenceSensor", title: "Monitor These Presences", required: true, multiple: true,  refreshAfterSelection:true
+    			input "people", "capability.presenceSensor", title: "Monitor These Presences", required: true, multiple: true,  submitOnChange:true
     		}
             
     		def phrases = location.helloHome?.getPhrases()*.label
@@ -61,10 +61,10 @@
             	phrases.sort()
     			section("Run This Phrase When...") {
     				log.trace phrases
-    				input "awayDay", "enum", title: "Everyone Is Away And It's Day", required: true, options: phrases,  refreshAfterSelection:true
-    				input "awayNight", "enum", title: "Everyone Is Away And It's Night", required: true, options: phrases,  refreshAfterSelection:true
-                    input "homeDay", "enum", title: "At Least One Person Is Home And It's Day", required: true, options: phrases,  refreshAfterSelection:true
-                    input "homeNight", "enum", title: "At Least One Person Is Home And It's Night", required: true, options: phrases,  refreshAfterSelection:true
+    				input "awayDay", "enum", title: "Everyone Is Away And It's Day", required: true, options: phrases,  submitOnChange:true
+    				input "awayNight", "enum", title: "Everyone Is Away And It's Night", required: true, options: phrases,  submitOnChange:true
+                    input "homeDay", "enum", title: "At Least One Person Is Home And It's Day", required: true, options: phrases,  submitOnChange:true
+                    input "homeNight", "enum", title: "At Least One Person Is Home And It's Night", required: true, options: phrases,  submitOnChange:true
     			}
                 section("Select modes used for each condition. (Needed for better app logic)") {
             input "homeModeDay", "mode", title: "Select Mode Used for 'Home Day'", required: true
@@ -84,11 +84,8 @@
       initialize()
     }
     
-    def uninstalled() {
-    unsubscribe()
-    }
-    
     def initialize() {
+    	state.clear()
     	subscribe(people, "presence", presence)
         runIn(60, checkSun)
     	subscribe(location, "sunrise", setSunrise)
@@ -202,7 +199,7 @@
     
     //set home mode when house is occupied
     def setHome() {
-    
+    sendOutOfDateNotification()
     log.info("Setting Home Mode!!")
     if(anyoneIsHome()) {
           if(state.sunMode == "sunset"){
@@ -299,8 +296,8 @@
     	def result = true
     	if (starting && ending) {
     		def currTime = now()
-    		def start = timeToday(starting).time
-    		def stop = timeToday(ending).time
+    		def start = timeToday(starting, location?.timeZone).time
+    		def stop = timeToday(ending, location?.timeZone).time
     		result = start < stop ? currTime >= start && currTime <= stop : currTime <= stop || currTime >= start
     	}
     	log.trace "timeOk = $result"
@@ -322,4 +319,15 @@
     
     private hideOptionsSection() {
     	(starting || ending || days || modes) ? false : true
+    }
+    
+    def sendOutOfDateNotification(evt){
+    	if(!state.lastTime){
+    		state.lastTime = (new Date() + 31).getTime()
+            sendNotification("Your version of Hello, Home Phrase Director is currently out of date. Please look for the new version of Hello, Home Phrase Director now called 'Routine Director' in the marketplace.")
+        }
+        else if (((new Date()).getTime()) >= state.lastTime){
+        	sendNotification("Your version of Hello, Home Phrase Director is currently out of date. Please look for the new version of Hello, Home Phrase Director now called 'Routine Director' in the marketplace.")
+        	state.lastTime = (new Date() + 31).getTime()
+        }
     }

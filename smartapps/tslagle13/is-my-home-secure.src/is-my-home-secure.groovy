@@ -1,16 +1,44 @@
 /**
- *  Is my home secure?
+ *  Is My Home Secure
  *
- *  Copyright 2014 Tim Slagle
+ *  Current Version: 1.2
+ *
+ *
+ *
+ *  Copyright 2015 Tim Slagle
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
- *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
- *  for the specific language governing permissions and limitations under the License.
+ *	The original licensing applies, with the following exceptions:
+ *		1.	These modifications may NOT be used without freely distributing all these modifications freely
+ *			and without limitation, in source form.	 The distribution may be met with a link to source code
+ *			with these modifications.
+ *		2.	These modifications may NOT be used, directly or indirectly, for the purpose of any type of
+ *			monetary gain.	These modifications may not be used in a larger entity which is being sold,
+ *			leased, or anything other than freely given.
+ *		3.	To clarify 1 and 2 above, if you use these modifications, it must be a free project, and
+ *			available to anyone with "no strings attached."	 (You may require a free registration on
+ *			a free website or portal in order to distribute the modifications.)
+ *		4.	The above listed exceptions to the original licensing do not apply to the holder of the
+ *			copyright of the original work.	 The original copyright holder can use the modifications
+ *			to hopefully improve their original work.  In that event, this author transfers all claim
+ *			and ownership of the modifications to "SmartThings."
+ *
+ *	Original Copyright information:
+ *
+ *	Copyright 2015 SmartThings
+ *
+ *	Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *	in compliance with the License. You may obtain a copy of the License at:
+ *
+ *		http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *	Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *	on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *	for the specific language governing permissions and limitations under the License.
  *
  */
 definition(
@@ -26,11 +54,13 @@ definition(
 
 preferences {
 	section("Which mode changes trigger the check?") {
-		input "newMode", "mode", title: "Which?", multiple: true, required: false
+		input "modes", "mode", title: "Which?", multiple: true, required: false
 	}
     section("Which doors, windows, and locks should I check?"){
 		input "contacts", "capability.contactSensor", title: "Which door(s)?", multiple: true, required: true
         input "locks", "capability.lock", title: "Which lock?", multiple: true, required: false
+        input "contactsNonSecure", "capability.contactSensor", title: "These doors/windows should be checked but do not effect security.", multiple: true, required: false
+        
     }
     section("When should I check? (once per day)") {
     	input "timeToCheck", "time", title: "When?(Optional)", required: false
@@ -43,7 +73,7 @@ preferences {
   	}
     section("Add SMS alerts?"){
     input "phone", "phone", title: "Phone number (For SMS - Optional)", required: false
-		input "pushAndPhone", "enum", title: "Send push message too?", required: false, options: ["Yes","No"]
+	input "pushAndPhone", "enum", title: "Send push message too?", required: false, options: ["Yes","No"]
         
 	}
     section("Settings"){
@@ -54,7 +84,7 @@ preferences {
     section(title: "More options", hidden: hideOptionsSection()) {
 			input "days", "enum", title: "Only on certain days of the week", multiple: true, required: false,
 				options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-			input "modes", "mode", title: "Only when mode is", multiple: true, required: false
+			
             
 		}
 }
@@ -75,14 +105,13 @@ def updated() {
 
 def initialize(){
 
-	if (newMode != null) {
+	if (modes != null) {
 		subscribe(location, modeChangeHandler)
     }
     if (timeToCheck != null) {
     	schedule(timeToCheck, checkDoor)
     }
-initializeVacation()
-schedule(timeToCheck, checkDoor)    
+initializeVacation()    
 }
 
 //set vacation mode if vacation mode is set
@@ -91,7 +120,7 @@ if(allOk){
 if (timeToCheckVacation){
     if (timeToCheckVacation > 4)
         // Schedule polling daemon to run every N minutes
-        schedule("0 0 0/${timeToCheckVacation} * * ?", checkDoor)
+        schedule("0 0/${timeToCheckVacation} * * * ?", checkDoor)
 }    
 }
 }
@@ -100,7 +129,8 @@ if (timeToCheckVacation){
 def modeChangeHandler(evt) {
 	log.debug "Mode change to: ${evt.value}"
     // Have to handle when they select one mode or multiple
-    if (newMode.any{ it == evt.value } || newMode == evt.value) {
+    if (modes.any{ it == evt.value } || modes == evt.value) {
+    log.debug("scheduling check")
 	def delay = (falseAlarmThreshold != null && falseAlarmThreshold != "") ? falseAlarmThreshold * 60 : 2 * 60 
     runIn(delay, "checkDoor")
     }
@@ -112,6 +142,7 @@ if(allOk){
 log.debug("checkDoor")
     def openContacts = contacts.findAll { it?.latestValue("contact") == 'open' }
     def openLocks = locks.findAll { it?.latestValue("lock") == 'unlocked' }
+    def openContactsNonSecure = contactsNonSecure.findAll { it?.latestValue("contact") == 'open' }
 
    	if (openContacts || openLocks){
     	if (openContacts && openLocks){
@@ -133,8 +164,13 @@ log.debug("checkDoor")
         }
     }
 
-    else if (!openContacts && !openLocks){
-    	def message = "All doors, windows, and locks are secure"
+	else if (!openContacts && !openLocks && openContactsNonSecure){
+    	def message = "Your home is secure but ${openContactsNonSecure.join(', ')} left open."
+        sendSecure(message)
+   }    
+
+    else if (!openContacts && !openLocks && !openContactsNonSecure){
+    	def message = "All doors, windows, and locks are secure."
         sendSecure(message)
    }    
 }  
@@ -256,8 +292,6 @@ private getTimeIntervalLabel()
 private hideOptionsSection() {
 	(starting || ending || days || modes) ? false : true
 }
-
-
 
 
 
